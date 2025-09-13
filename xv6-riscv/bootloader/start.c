@@ -69,15 +69,22 @@ bool is_secure_boot(void) {
 void start()
 {
   /* CSE 536: Define the system information table's location. */
-  sys_info_ptr = (struct sys_info*) 0x0;
-
+  sys_info_ptr = (struct sys_info*) 0x80080000;
+  sys_info_ptr->bl_start = (uint64)KERNBASE;
+  sys_info_ptr->bl_end = (uint64)ecode;  
+  sys_info_ptr->dr_start = (uint64)ecode; // No need for +1
+  sys_info_ptr->dr_end = (uint64)PHYSTOP;
   // keep each CPU's hartid in its tp register, for cpuid().
   int id = r_mhartid();
   w_tp(id);
 
   // set M Previous Privilege mode to Supervisor, for mret.
   unsigned long x = r_mstatus();
+  // zero out 11th and 12th bit
+  // Machine previous privilege mode.
+  // Machine: 11, Supervisor: 01, User: 00
   x &= ~MSTATUS_MPP_MASK;
+  // make MPP bits 01 for S-mode
   x |= MSTATUS_MPP_S;
   w_mstatus(x);
 
@@ -111,10 +118,21 @@ void start()
   }
   
   /* CSE 536: Load the NORMAL kernel binary (assuming secure boot passed). */
-  // uint64 kernel_load_addr       = find_kernel_load_addr(NORMAL);
-  // uint64 kernel_binary_size     = find_kernel_size(NORMAL);     
+  uint64 kernel_load_addr       = find_kernel_load_addr(NORMAL);
+  uint64 kernel_binary_size     = find_kernel_size(NORMAL);     
   uint64 kernel_entry           = find_kernel_entry_addr(NORMAL);
   
+  struct buf b;
+  uint64 blocks = kernel_binary_size / BSIZE;
+  int j = 0;
+  for (int i = 4; i < blocks + 1; i++) 
+  {
+    b.blockno = i;
+    kernel_copy(NORMAL, &b);
+    memmove((char*)(kernel_load_addr + (j++)*BSIZE), &b.data, BSIZE);
+  }
+
+
   /* CSE 536: Write the correct kernel entry point */
   w_mepc((uint64) kernel_entry);
  
