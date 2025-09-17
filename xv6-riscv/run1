@@ -1,0 +1,40 @@
+#!/bin/bash -e
+
+if [ "$#" -lt 1 ]; then
+    echo "Usage: ./run <kernel-version/gdb>"
+    echo "      e.g., ./run kernel1"
+    exit 0
+fi
+
+kernel=$1
+
+if [ "$1" == "gdb" ]; then
+    if [ -z "$2" ]; then
+        kernel=kernel1
+    else
+        kernel=$2
+    fi
+    upper=`echo $kernel | tr '[:lower:]' '[:upper:]'`
+fi
+
+if [[ "$1" == *tamper ]]; then
+    base="${1%tamper}"
+    upper=`echo $base | tr '[:lower:]' '[:upper:]'`
+else
+    upper=`echo $1 | tr '[:lower:]' '[:upper:]'`
+fi
+
+make clean
+./generate-measurements
+make all KERNELVERSION=$upper
+./create-recovery $kernel
+
+if [ "$1" == "gdb" ]; then
+    echo ""
+    echo "Executing $kernel with GDB.. "
+    make qemu-gdb
+else 
+    echo ""
+    echo "Executing $kernel.. "
+    make qemu
+fi

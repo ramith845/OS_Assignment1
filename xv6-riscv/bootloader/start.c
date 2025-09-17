@@ -65,14 +65,25 @@ bool is_secure_boot(void) {
   return verification;
 }
 
+uint64 to_napot_addr(uint64 base, uint64 top)
+{
+  uint64 size = top - base;
+  return (base>>2) | (size/2 - 1);
+}
+
+uint64 to_tor_addr(uint64 addr)
+{
+  return addr >> 2;
+}
+
 // entry.S jumps here in machine mode on stack0.
 void start()
 {
   /* CSE 536: Define the system information table's location. */
   sys_info_ptr = (struct sys_info*) 0x80080000;
   sys_info_ptr->bl_start = (uint64)KERNBASE;
-  sys_info_ptr->bl_end = (uint64)ecode;  
-  sys_info_ptr->dr_start = (uint64)ecode; // No need for +1
+  sys_info_ptr->bl_end = (uint64)&end;  
+  sys_info_ptr->dr_start = (uint64)KERNBASE; // No need for +1
   sys_info_ptr->dr_end = (uint64)PHYSTOP;
   // keep each CPU's hartid in its tp register, for cpuid().
   int id = r_mhartid();
@@ -91,24 +102,41 @@ void start()
   // disable paging
   w_satp(0);
 
-  /* CSE 536: Unless kernelpmp[1-2] booted, allow all memory 
-   * regions to be accessed in S-mode. */ 
-  #if !defined(KERNELPMP1) || !defined(KERNELPMP2)
-    w_pmpaddr0(0x3fffffffffffffull);
-    w_pmpcfg0(0xf);
-  #endif
+/* CSE 536: Unless kernelpmp[1-2] booted, allow all memory
+ * regions to be accessed in S-mode. */
+#if !defined(KERNELPMP1) || !defined(KERNELPMP2)
+  // w_pmpaddr0(0x3fffffffffffffull);
+  // w_pmpcfg0(0xf);
+#endif
 
-  /* CSE 536: With kernelpmp1, isolate upper 10MBs using TOR */ 
-  #if defined(KERNELPMP1)
-    w_pmpaddr0(0x0ull);
-    w_pmpcfg0(0x0);
-  #endif
+/* CSE 536: With kernelpmp1, isolate upper 10MBs using TOR */
+#if defined(KERNELPMP1)
+  // TOR: 118 MB
+  // w_pmpaddr0(0x21d40000ull);
+  w_pmpaddr0(to_tor_addr(0x87500000ull));
+  // R/W/X with TOR
+  w_pmpcfg0(0xf);
+#endif
 
-  /* CSE 536: With kernelpmp2, isolate 118-120 MB and 122-126 MB using NAPOT */ 
-  #if defined(KERNELPMP2)
-    w_pmpaddr0(0x0ull);
-    w_pmpcfg0(0x0);
-  #endif
+/* CSE 536: With kernelpmp2, isolate 118-120 MB and 122-126 MB using NAPOT */
+#if defined(KERNELPMP2)
+// R/W/X with TOR
+  w_pmpaddr0(to_tor_addr(0x87600000ull));
+  w_pmpcfg0(0xf);
+
+  // 118-120 deny:  0x87600000 to 0x87800000
+  // w_pmpaddr1(0x21dbffff);
+  // w_pmpcfg1(0x18);
+  // 120-122 allow: 0x87800000 to 0x87a00000
+  w_pmpaddr0(to_napot_addr(0x80000000ull, 0x87a00000ull));
+  w_pmpcfg0(0x1f);
+  // // 122-126 deny: 0x87a00000 to 0x87e00000
+  // w_pmpaddr3(to_napot_addr(0x87a00000ull, 0x87e00000ull));
+  // w_pmpcfg3(0x18);
+  // // 126-128 allow: 0x87e00000 to 0x88000000
+  // w_pmpaddr4(to_napot_addr(0x87e00000ull, 0x88000000ull));
+  // w_pmpcfg4(0x1f);
+#endif
 
   /* CSE 536: Verify if the kernel is untampered for secure boot */
   if (!is_secure_boot()) {
@@ -123,13 +151,26 @@ void start()
   uint64 kernel_entry           = find_kernel_entry_addr(NORMAL);
   
   struct buf b;
-  uint64 blocks = kernel_binary_size / BSIZE;
-  int j = 0;
-  for (int i = 4; i < blocks + 1; i++) 
+  /*
+    say kernel_binary_size = 4050
+    blocks = 4050 / 1000 = 4
+    roundup to 5 not 4 for extra 50 bytes 
+    (kernel_binary_size + BSIZE - 1 )/ BSIZE = (4050 + 1000 - 1) / 1000 = 5
+  */
+  uint64 blocks = (kernel_binary_size + (uint64)BSIZE - 1) / BSIZE;
+  uint64 copied = 0;
+  int block_start = 4;
+  for (int i = block_start; i < blocks; i++) 
   {
     b.blockno = i;
     kernel_copy(NORMAL, &b);
-    memmove((char*)(kernel_load_addr + (j++)*BSIZE), &b.data, BSIZE);
+
+    uint64 rem = kernel_binary_size - copied;
+    uint chunk = BSIZE;
+    if (rem < BSIZE) chunk = rem;
+    if (kernel_load_addr == 0) panic(0x0);
+    memmove((char*)(kernel_load_addr + copied), &b.data, chunk);
+    copied += chunk;
   }
 
 
