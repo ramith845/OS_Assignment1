@@ -190,29 +190,6 @@ w_pmpcfg0(uint64 x)
   asm volatile("csrw pmpcfg0, %0" : : "r" (x));
 }
 
-static inline void
-w_pmpcfg1(uint64 x)
-{
-  asm volatile("csrw pmpcfg1, %0" : : "r" (x));
-}
-
-static inline void
-w_pmpcfg2(uint64 x)
-{
-  asm volatile("csrw pmpcfg2, %0" : : "r" (x));
-}
-
-static inline void
-w_pmpcfg3(uint64 x)
-{
-  asm volatile("csrw pmpcfg3, %0" : : "r" (x));
-}
-
-static inline void
-w_pmpcfg4(uint64 x)
-{
-  asm volatile("csrw pmpcfg4, %0" : : "r" (x));
-}
 
 static inline void
 w_pmpaddr0(uint64 x)
