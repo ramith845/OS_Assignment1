@@ -12,7 +12,7 @@
 void main();
 void timerinit();
 
-/* entry.S needs one stack per CPU */
+/* entry.S needs one stack per CPU */ 
 __attribute__ ((aligned (16))) char bl_stack[STSIZE * NCPU];
 
 /* Context (SHA-256) for secure boot */
@@ -84,20 +84,21 @@ bool is_secure_boot(void) {
   /* Read the binary and update the observed measurement 
    * (simplified template provided below) */
   sha256_init(&sha256_ctx);
-  struct buf b;
-  uint64 blocks = (kernel_binary_size + (uint64)BSIZE - 1) / BSIZE;
-  uint64 copied = 0;
-  for (int i = 0; i < blocks; i++) 
-  {
-    b.blockno = i;
-    kernel_copy(NORMAL, &b);
+  // struct buf b;
+  // uint64 blocks = (kernel_binary_size + (uint64)BSIZE - 1) / BSIZE;
+  // uint64 copied = 0;
+  // for (int i = 0; i < blocks; i++) 
+  // {
+  //   b.blockno = i;
+  //   kernel_copy(NORMAL, &b);
 
-    uint64 rem = kernel_binary_size - copied;
-    uint chunk = BSIZE;
-    if (rem < BSIZE) chunk = rem;
-    sha256_update(&sha256_ctx, (const unsigned char*) b.data, chunk);
-    copied += chunk;
-  }
+  //   uint64 rem = kernel_binary_size - copied;
+  //   uint chunk = BSIZE;
+  //   if (rem < BSIZE) chunk = rem;
+  //   sha256_update(&sha256_ctx, (const unsigned char*) b.data, chunk);
+  //   copied += chunk;
+  // }
+  sha256_update(&sha256_ctx, (const unsigned char*) RAMDISK, kernel_binary_size);
   
   sha256_final(&sha256_ctx, sys_info_ptr->observed_kernel_measurement);
 
@@ -141,7 +142,7 @@ void start()
   /* CSE 536: Define the system information table's location. */
   sys_info_ptr = (struct sys_info*) 0x80080000;
   sys_info_ptr->bl_start = (uint64)KERNBASE;
-  sys_info_ptr->bl_end = (uint64)&end;  
+  sys_info_ptr->bl_end = (uint64)end;
   sys_info_ptr->dr_start = (uint64)KERNBASE; // No need for +1
   sys_info_ptr->dr_end = (uint64)PHYSTOP;
   // keep each CPU's hartid in its tp register, for cpuid().
@@ -185,9 +186,9 @@ void start()
   w_pmpaddr2(to_napot_addr(0x87e00000ull, 0x88000000ull));
 
   uint64 cfg = 0;
-  cfg |= (0b01 << 3) | 0x7; // pmp0: TOR, R,W,X
-  cfg |= ((uint64)((0b11 << 3) | 0x7)) << 8; // pmp1: NAPOT, R,W,X
-  cfg |= ((uint64)((0b11 << 3) | 0x7)) << 16; // pmp2: NAPOT, R,W,X
+  cfg |= (0b01 << 3) | 0x7;
+  cfg |= ((uint64)((0b11 << 3) | 0x7)) << 8;
+  cfg |= ((uint64)((0b11 << 3) | 0x7)) << 16;
 
 
   w_pmpcfg0(cfg);
